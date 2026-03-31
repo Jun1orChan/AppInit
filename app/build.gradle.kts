@@ -47,7 +47,7 @@ kapt {
 }
 
 appInit {
-    enabled = false
+    enabled = true
 }
 
 dependencies {
