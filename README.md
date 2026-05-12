@@ -21,7 +21,70 @@
 
 ## 使用方式
 
-### 1. 应用模块
+### 1. 接入依赖
+
+在根工程 `settings.gradle.kts` 中添加发布仓库：
+
+```kotlin
+pluginManagement {
+    repositories {
+        maven {
+            url = uri("http://package.caiwuziyou.top:9001/maven2/maven/")
+            isAllowInsecureProtocol = true
+        }
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        maven {
+            url = uri("http://package.caiwuziyou.top:9001/maven2/maven/")
+            isAllowInsecureProtocol = true
+        }
+        google()
+        mavenCentral()
+    }
+}
+```
+
+当前发布坐标：
+
+| 组件 | 依赖坐标 |
+|------|----------|
+| Gradle Plugin | `com.nd.appinit:appinit-plugin:1.1.0` |
+| Annotation | `com.nd.appinit:appInit-annotation:1.1.0` |
+| Runtime | `com.nd.appinit:runtime:1.1.0` |
+| Compiler | `com.nd.appinit:appinit-compiler:1.1.0` |
+
+应用模块使用插件：
+
+```kotlin
+plugins {
+    id("com.nd.appinit.plugin") version "1.1.0"
+}
+```
+
+业务模块添加依赖：
+
+```kotlin
+dependencies {
+    implementation("com.nd.appinit:appInit-annotation:1.1.0")
+    implementation("com.nd.appinit:runtime:1.1.0")
+    kapt("com.nd.appinit:appinit-compiler:1.1.0")
+}
+```
+
+如果模块使用 Java 注解处理器，将 `kapt` 替换为：
+
+```kotlin
+annotationProcessor("com.nd.appinit:appinit-compiler:1.1.0")
+```
+
+### 2. 应用模块
 
 应用模块需要应用插件，并配置 kapt 参数：
 
@@ -30,7 +93,13 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.kapt")
-    id("com.nd.appinit.plugin")
+    id("com.nd.appinit.plugin") version "1.1.0"
+}
+
+dependencies {
+    implementation("com.nd.appinit:appInit-annotation:1.1.0")
+    implementation("com.nd.appinit:runtime:1.1.0")
+    kapt("com.nd.appinit:appinit-compiler:1.1.0")
 }
 
 kapt {
@@ -98,7 +167,7 @@ class App : Application() {
 
 `AppInitDispatcher.setDebugLogEnabled(true)` 会输出各初始化类生命周期回调耗时，默认关闭。
 
-### 2. 库模块
+### 3. 库模块
 
 库模块需要依赖 annotation、runtime，并使用 kapt：
 
@@ -116,9 +185,9 @@ kapt {
 }
 
 dependencies {
-    implementation(project(":appinit-annotation"))
-    implementation(project(":appinit-runtime"))
-    kapt(project(":appinit-compiler"))
+    implementation("com.nd.appinit:appInit-annotation:1.1.0")
+    implementation("com.nd.appinit:runtime:1.1.0")
+    kapt("com.nd.appinit:appinit-compiler:1.1.0")
 }
 ```
 
