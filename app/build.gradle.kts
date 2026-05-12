@@ -48,6 +48,8 @@ kapt {
 
 appInit {
     enabled = true
+    verbose = true
+    failOnMissingFinder = true
 }
 
 dependencies {

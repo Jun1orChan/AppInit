@@ -17,47 +17,46 @@ class AppInitPlugin : Plugin<Project> {
     override fun apply(project: Project) {
         Logger.i("[PLUGIN] Applying plugin to: ${project.name}")
 
-        if (project.name != "app") {
-            Logger.i("[PLUGIN] Skipping non-app project: ${project.name}")
-            return
-        }
-
         project.extensions.create("appInit", AppInitExtension::class.java)
         Logger.i("[PLUGIN] Created AppInitExtension")
 
-        val androidComponents = project.extensions.getByType(AndroidComponentsExtension::class.java)
-        Logger.i("[PLUGIN] Loaded AndroidComponentsExtension")
+        project.plugins.withId("com.android.application") {
+            val androidComponents = project.extensions.getByType(AndroidComponentsExtension::class.java)
+            Logger.i("[PLUGIN] Loaded AndroidComponentsExtension")
 
-        androidComponents.onVariants { variant ->
-            val variantName = variant.name
-            Logger.i("[PLUGIN] Processing variant: $variantName")
+            androidComponents.onVariants { variant ->
+                val variantName = variant.name
+                Logger.i("[PLUGIN] Processing variant: $variantName")
+                val extension = project.extensions.getByType(AppInitExtension::class.java)
 
-            if (!project.extensions.getByType(AppInitExtension::class.java).enabled) {
-                Logger.i("[PLUGIN] Plugin is disabled, skipping variant: $variantName")
-                return@onVariants
-            }
+                if (!extension.enabled) {
+                    Logger.i("[PLUGIN] Plugin is disabled, skipping variant: $variantName")
+                    return@onVariants
+                }
 
-            val taskProvider = project.tasks.register(
-                "${variantName.capitalized()}AppInitTransform",
-                AppInitTransformTask::class.java,
-                androidComponents
-            )
-
-            taskProvider.configure { _ ->
-                // No additional configuration needed - all data comes from input artifacts
-            }
-
-            @Suppress("UnstableApiUsage")
-            val transformParams = ScopedArtifacts.Scope.ALL
-
-            variant.artifacts.forScope(transformParams).use(taskProvider)
-                .toTransform(
-                    ScopedArtifact.CLASSES,
-                    AppInitTransformTask::allJars,
-                    AppInitTransformTask::allDirectories,
-                    AppInitTransformTask::output
+                val taskProvider = project.tasks.register(
+                    "${variantName.capitalized()}AppInitTransform",
+                    AppInitTransformTask::class.java,
+                    androidComponents
                 )
-            Logger.i("[PLUGIN] Registered AppInitTransformTask")
+
+                taskProvider.configure { task ->
+                    task.verbose.set(project.provider { extension.verbose })
+                    task.failOnMissingFinder.set(project.provider { extension.failOnMissingFinder })
+                }
+
+                @Suppress("UnstableApiUsage")
+                val transformParams = ScopedArtifacts.Scope.ALL
+
+                variant.artifacts.forScope(transformParams).use(taskProvider)
+                    .toTransform(
+                        ScopedArtifact.CLASSES,
+                        AppInitTransformTask::allJars,
+                        AppInitTransformTask::allDirectories,
+                        AppInitTransformTask::output
+                    )
+                Logger.i("[PLUGIN] Registered AppInitTransformTask")
+            }
         }
     }
 }

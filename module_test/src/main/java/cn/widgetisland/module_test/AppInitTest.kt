@@ -5,12 +5,13 @@ import android.content.Context
 import android.util.Log
 import com.nd.appinit.IAppInitListener
 import com.nd.appinit.annotation.AppInit
+import com.nd.appinit.annotation.AppInitProcess
 
 /**
  * 示例：实现 IAppInitListener 接口并用 @AppInit 标记，
  * 在 Application 生命周期中会被自动分发调用。
  */
-@AppInit(priority = 10)
+@AppInit(priority = 10, process = AppInitProcess.MAIN)
 class AppInitTest : IAppInitListener {
 
     override fun onCreate(application: Application) {

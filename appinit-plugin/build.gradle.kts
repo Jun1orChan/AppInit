@@ -1,11 +1,10 @@
 plugins {
     id("java-gradle-plugin")
     id("org.jetbrains.kotlin.jvm") version "1.9.22"
-    id("maven-publish")
+//    id("maven-publish")
 }
 
-group = "com.nd.appinit"
-version = "1.0.0"
+apply(from = rootProject.file("../gradle/publish.gradle"))
 
 gradlePlugin {
     plugins {
@@ -29,20 +28,20 @@ java {
     targetCompatibility = JavaVersion.VERSION_17
 }
 
-publishing {
-    publications {
-        create<MavenPublication>("maven") {
-            from(components["java"])
-            pom {
-                name.set("AppInit Plugin")
-                description.set("Android AppInit Gradle Plugin")
-            }
-        }
-    }
-    repositories {
-        maven {
-            url = uri("${System.getProperty("user.home")}/.m2/repository")
-            name = "LocalMaven"
-        }
-    }
-}
+//publishing {
+//    publications {
+//        create<MavenPublication>("maven") {
+//            from(components["java"])
+//            pom {
+//                name.set("AppInit Plugin")
+//                description.set("Android AppInit Gradle Plugin")
+//            }
+//        }
+//    }
+//    repositories {
+//        maven {
+//            url = uri("${System.getProperty("user.home")}/.m2/repository")
+//            name = "LocalMaven"
+//        }
+//    }
+//}

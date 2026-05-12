@@ -14,12 +14,15 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.Elements;
+import javax.lang.model.util.Types;
 import javax.tools.Diagnostic;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 
@@ -33,6 +36,10 @@ public class AppInitProcessor extends AbstractProcessor {
     private Filer filer;
     private Messager messager;
     private Elements elementUtils;
+    private Types typeUtils;
+    private final Map<String, TypeElement> initClasses = new LinkedHashMap<>();
+    private boolean generated;
+    private boolean hasError;
 
     @Override
     public synchronized void init(ProcessingEnvironment processingEnv) {
@@ -40,11 +47,10 @@ public class AppInitProcessor extends AbstractProcessor {
         filer = processingEnv.getFiler();
         messager = processingEnv.getMessager();
         elementUtils = processingEnv.getElementUtils();
-        // 获取模块名称
-        moduleName = processingEnv.getOptions().get(OPTION_MODULE_NAME);
-        if (moduleName == null || moduleName.isEmpty()) {
-            messager.printMessage(Diagnostic.Kind.ERROR,
-                    "AppInit: module name not configured. Please add the following in your build.gradle:\n\n" +
+        typeUtils = processingEnv.getTypeUtils();
+        String configuredModuleName = processingEnv.getOptions().get(OPTION_MODULE_NAME);
+        if (configuredModuleName == null || configuredModuleName.trim().isEmpty()) {
+            printError("AppInit: module name not configured. Please add the following in your build.gradle:\n\n" +
                     "kapt {\n" +
                     "    arguments {\n" +
                     "        arg(\"appinit.module.name\", \"your_module_name\")\n" +
@@ -52,6 +58,7 @@ public class AppInitProcessor extends AbstractProcessor {
                     "}");
             throw new RuntimeException("AppInit: module name is required. Please configure 'appinit.module.name' in kapt arguments.");
         }
+        moduleName = sanitizeModuleName(configuredModuleName.trim());
     }
 
     @Override
@@ -71,59 +78,103 @@ public class AppInitProcessor extends AbstractProcessor {
 
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
-        if (roundEnv.processingOver() || annotations.isEmpty()) {
-            return false;
+        if (generated) {
+            return true;
         }
 
         Set<? extends Element> elements = roundEnv.getElementsAnnotatedWith(AppInit.class);
-        List<TypeElement> initClasses = new ArrayList<>();
 
         for (Element element : elements) {
             if (element.getKind() != ElementKind.CLASS) {
-                messager.printMessage(Diagnostic.Kind.ERROR, "@AppInit only applies to classes", element);
+                printError("@AppInit only applies to classes", element);
                 continue;
             }
 
             TypeElement typeElement = (TypeElement) element;
 
+            if (!isAppInitListener(typeElement)) {
+                printError(
+                        "@AppInit class must implement com.nd.appinit.IAppInitListener: " + typeElement.getQualifiedName().toString(),
+                        typeElement);
+                continue;
+            }
+
             // 检查是否有无参构造函数
             if (hasNoArgConstructor(typeElement)) {
-                initClasses.add(typeElement);
+                initClasses.put(typeElement.getQualifiedName().toString(), typeElement);
             } else {
-                messager.printMessage(Diagnostic.Kind.ERROR,
+                printError(
                         "@AppInit class must have a public no-arg constructor: " + typeElement.getQualifiedName().toString(),
                         typeElement);
             }
         }
 
-        if (initClasses.isEmpty()) {
-            return false;
-        }
-
-        try {
-            generateAppInitClass(initClasses);
-        } catch (IOException e) {
-            messager.printMessage(Diagnostic.Kind.ERROR, "Failed to generate AppInit class: " + e.getMessage());
-        }
+        generateCollectedAppInitClass();
 
         return true;
     }
 
+    private void generateCollectedAppInitClass() {
+        if (generated || hasError || initClasses.isEmpty()) {
+            return;
+        }
+
+        try {
+            generateAppInitClass(new java.util.ArrayList<>(initClasses.values()));
+            generated = true;
+        } catch (IOException e) {
+            printError("Failed to generate AppInit class: " + e.getMessage());
+        }
+    }
+
     private boolean hasNoArgConstructor(TypeElement typeElement) {
+        boolean hasConstructor = false;
         for (Element enclosed : typeElement.getEnclosedElements()) {
             if (enclosed.getKind() == ElementKind.CONSTRUCTOR) {
+                hasConstructor = true;
                 if (enclosed.getModifiers().contains(Modifier.PUBLIC) &&
                         ((javax.lang.model.element.ExecutableElement) enclosed).getParameters().isEmpty()) {
                     return true;
                 }
             }
         }
-        return true;
+        return !hasConstructor;
+    }
+
+    private boolean isAppInitListener(TypeElement typeElement) {
+        TypeElement listenerElement = elementUtils.getTypeElement("com.nd.appinit.IAppInitListener");
+        if (listenerElement == null) {
+            printError("AppInit: com.nd.appinit.IAppInitListener not found. Please add appinit-runtime dependency.");
+            return false;
+        }
+        TypeMirror listenerType = typeUtils.erasure(listenerElement.asType());
+        TypeMirror targetType = typeUtils.erasure(typeElement.asType());
+        return typeUtils.isAssignable(targetType, listenerType);
+    }
+
+    private String sanitizeModuleName(String rawModuleName) {
+        StringBuilder builder = new StringBuilder(rawModuleName.length());
+        for (int i = 0; i < rawModuleName.length(); i++) {
+            char ch = rawModuleName.charAt(i);
+            builder.append(Character.isJavaIdentifierPart(ch) ? ch : '_');
+        }
+        return builder.length() == 0 ? "module" : builder.toString();
+    }
+
+    private void printError(String message) {
+        hasError = true;
+        messager.printMessage(Diagnostic.Kind.ERROR, message);
+    }
+
+    private void printError(String message, Element element) {
+        hasError = true;
+        messager.printMessage(Diagnostic.Kind.ERROR, message, element);
     }
 
     private void generateAppInitClass(List<TypeElement> initClasses) throws IOException {
         // 返回类型: List<com.nd.appinit.AppInitInfo>
         com.squareup.javapoet.ClassName appInitInfoClass = com.squareup.javapoet.ClassName.get("com.nd.appinit", "AppInitInfo");
+        com.squareup.javapoet.ClassName appInitProcessClass = com.squareup.javapoet.ClassName.get("com.nd.appinit.annotation", "AppInitProcess");
         com.squareup.javapoet.ParameterizedTypeName listOfAppInitInfo = com.squareup.javapoet.ParameterizedTypeName.get(
                 com.squareup.javapoet.ClassName.get(List.class),
                 appInitInfoClass);
@@ -140,8 +191,9 @@ public class AppInitProcessor extends AbstractProcessor {
         for (TypeElement cls : initClasses) {
             AppInit ann = cls.getAnnotation(AppInit.class);
             int priority = ann != null ? ann.priority() : 0;
-            methodBuilder.addStatement("result.add(new $T($T.class, $L))", appInitInfoClass,
-                    com.squareup.javapoet.ClassName.get(cls), priority);
+            String process = ann != null ? ann.process().name() : "ALL";
+            methodBuilder.addStatement("result.add(new $T(new $T(), $L, $T.$L))", appInitInfoClass,
+                    com.squareup.javapoet.ClassName.get(cls), priority, appInitProcessClass, process);
         }
 
         methodBuilder.addStatement("return result");

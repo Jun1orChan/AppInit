@@ -19,4 +19,9 @@ public @interface AppInit {
      * 优先级，数值越小越先执行，默认 Integer.MAX_VALUE。
      */
     int priority() default Integer.MAX_VALUE;
+
+    /**
+     * 指定初始化监听器在哪些进程执行，默认所有进程。
+     */
+    AppInitProcess process() default AppInitProcess.ALL;
 }

@@ -6,6 +6,8 @@ import org.gradle.api.file.Directory
 import org.gradle.api.file.RegularFile
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.TaskAction
@@ -33,13 +35,13 @@ abstract class AppInitTransformTask @Inject constructor(
     @get:OutputFile
     abstract val output: RegularFileProperty
 
-    private val inputFiles = mutableSetOf<File>()
-    private val cacheDir = File(project.buildDir, "appinit-cache")
+    @get:Input
+    abstract val verbose: Property<Boolean>
 
-    private fun getCacheFile(): File {
-        val variant = name.removePrefix("Debug").removePrefix("Release").lowercase()
-        return File(cacheDir, "scan-cache-${variant}.txt")
-    }
+    @get:Input
+    abstract val failOnMissingFinder: Property<Boolean>
+
+    private val inputFiles = mutableSetOf<File>()
 
     @TaskAction
     fun taskAction() {
@@ -47,26 +49,28 @@ abstract class AppInitTransformTask @Inject constructor(
         Logger.i("[TASK] AppInitTransform start")
 
         // Step 1: Scan warehouse classes
-        val warehouseClasses = WarehouseScanner.loadFromCacheOrScan(
-            getCacheFile(), allJars.get(), allDirectories.get()
+        val warehouseClasses = WarehouseScanner.scanAllInputs(
+            allJars.get(),
+            allDirectories.get(),
+            verbose.getOrElse(false)
         )
         Logger.i("[TASK] Found ${warehouseClasses.size} warehouse classes: $warehouseClasses")
 
         // Step 2: Inject into AppInitFinder
         val modifications = AsmInjector.transformAppInitFinder(
-            allJars.get(), allDirectories.get(), warehouseClasses
+            allJars.get(),
+            allDirectories.get(),
+            warehouseClasses,
+            failOnMissingFinder.getOrElse(true)
         )
 
         // Step 3: Pack output jar
         packOutputJar(modifications)
 
-        // Step 4: Save cache
-        WarehouseScanner.saveCache(warehouseClasses, allJars.get(), getCacheFile())
-
         Logger.i("[TASK] AppInitTransform done, time used: ${System.currentTimeMillis() - timeStart}ms")
     }
 
-    private fun packOutputJar(modifications: Map<File, ByteArray?>) {
+    private fun packOutputJar(modifications: Map<File, ByteArray>) {
         val outputFile = output.get().asFile
         outputFile.parentFile?.mkdirs()
 
@@ -88,7 +92,7 @@ abstract class AppInitTransformTask @Inject constructor(
                     copyJar(jarOutput, input, insertedEntries)
                 }
             } else if (input.isDirectory) {
-                copyDir(jarOutput, input, insertedEntries)
+                copyDir(jarOutput, input, insertedEntries, modifications[input])
             }
         }
 
@@ -138,14 +142,19 @@ abstract class AppInitTransformTask @Inject constructor(
     private fun copyDir(
         jarOutput: JarOutputStream,
         dir: File,
-        insertedEntries: MutableSet<String>
+        insertedEntries: MutableSet<String>,
+        modifiedFinderBytes: ByteArray?
     ) {
         dir.walk().filter { it.isFile }.forEach { file ->
             val relativePath = dir.toURI().relativize(file.toURI()).path
             if (!insertedEntries.contains(relativePath)) {
                 insertedEntries.add(relativePath)
                 jarOutput.putNextEntry(JarEntry(relativePath.replace(File.separatorChar, '/')))
-                file.inputStream().use { it.copyTo(jarOutput) }
+                if (relativePath == "com/nd/appinit/AppInitFinder.class" && modifiedFinderBytes != null) {
+                    jarOutput.write(modifiedFinderBytes)
+                } else {
+                    file.inputStream().use { it.copyTo(jarOutput) }
+                }
                 jarOutput.closeEntry()
             }
         }

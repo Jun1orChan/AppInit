@@ -3,15 +3,14 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-group = "com.nd.appinit"
-version = "1.0.0"
-
+apply(from = rootProject.file("gradle/publish.gradle"))
 android {
     namespace = "com.nd.appinit.runtime"
     compileSdk = 34
 
     defaultConfig {
         minSdk = 21
+        consumerProguardFiles("consumer-rules.pro")
     }
 
     compileOptions {

@@ -1,9 +1,7 @@
 plugins {
     id("java-library")
 }
-
-group = "com.nd.appinit"
-version = "1.0.0"
+apply(from = rootProject.file("gradle/publish.gradle"))
 
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8

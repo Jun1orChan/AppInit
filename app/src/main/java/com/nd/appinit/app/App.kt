@@ -12,6 +12,7 @@ class App : Application() {
 
     override fun attachBaseContext(base: Context?) {
         super.attachBaseContext(base)
+        AppInitDispatcher.setDebugLogEnabled(true)
         base?.let {
             AppInitDispatcher.dispatchAttachBaseContext(this, it)
         }

@@ -6,4 +6,8 @@ package com.nd.appinit.plugin
 abstract class AppInitExtension {
 
     var enabled: Boolean = true
+
+    var verbose: Boolean = false
+
+    var failOnMissingFinder: Boolean = true
 }
